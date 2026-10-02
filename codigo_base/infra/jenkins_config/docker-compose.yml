@@ -1,33 +1,46 @@
-version: "3.9"
 services:
   jenkins:
     build: .
+    image: studytrack-jenkins:1.0.0
     container_name: jenkins
     networks:
       - cicd_network
     ports:
-      - "9182:8080"
-      - "50001:50000"
+      - "${JENKINS_UI_PORT:-9182}:8080"
+      - "${JENKINS_AGENT_PORT:-50001}:50000"
+    group_add:
+      - "${DOCKER_GID:-0}"
     volumes:
-      # EVALUATED: persistence of Jenkins state
-      - TODO-VOLUMEN:/var/jenkins_home
-      # EVALUATED: access to host Docker daemon
-      - TODO-SOCKET-DOCKER
+      # Persistencia del estado de Jenkins (jobs, credenciales, plugins)
+      - jenkins_home:/var/jenkins_home
+      # Acceso al daemon Docker del host
+      - /var/run/docker.sock:/var/run/docker.sock
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/login >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+
   smee:
     build: ./smee
     container_name: smee-client
     environment:
-      # EVALUATED: create a unique channel at smee.io
-      - SMEE_URL=TODO-URL-DE-SU-CANAL-SMEE
+      - SMEE_URL=${SMEE_CHANNEL_URL}
       - SMEE_TARGET=http://jenkins:8080/github-webhook/
     networks:
       - cicd_network
     depends_on:
-      - jenkins
+      jenkins:
+        condition: service_healthy
+    restart: unless-stopped
+
 networks:
   cicd_network:
-    name: cicd_network
+    external: true
+
 volumes:
   jenkins_home:
